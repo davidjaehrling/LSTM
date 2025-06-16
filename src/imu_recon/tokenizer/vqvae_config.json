@@ -1,0 +1,14 @@
+{
+    "model_name": "vqvae",
+    "model_save_name": "vqvae",
+    "pretrained": false,
+    "learning_rate": 0.001,
+    "num_training_updates": 120000,
+    "block_hidden_size": 64,
+    "num_residual_layers": 3,
+    "res_hidden_size": 128,
+    "embedding_dim": 16,
+    "num_embeddings": 512,
+    "commitment_cost": 0.25,
+    "compression_factor": 4
+}
