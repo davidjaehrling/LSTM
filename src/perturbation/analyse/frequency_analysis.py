@@ -86,7 +86,7 @@ class FrequencyAnalyzer(BaseAnalyser):
         self.plot_band_importance(results)
         return results
 
-    def plot_band_importance(self, results: dict, scale: str = "linear", name: str = "_"):
+    def plot_band_importance(self, results: dict, scale: str = "linear"):
         labels = list(results.keys())
         vals = [results[b] for b in labels]
         plt.figure(figsize=(8, 4))
@@ -98,7 +98,7 @@ class FrequencyAnalyzer(BaseAnalyser):
         plt.title('Frequency Band Importance')
         plt.grid(axis='y')
         plt.tight_layout()
-        plt.savefig(self.plotpath + f'frequency_band_importance{name}.png')
+        plt.savefig(self.plotpath + f'frequency_band_importance.png')
         plt.close()
 
     def compute_temporal_importance(self, bands: dict = None) -> DataFrame:
@@ -130,74 +130,3 @@ class FrequencyAnalyzer(BaseAnalyser):
             imp[name] = mse_pert - mse_base
         df = pd.DataFrame(imp)
         return df
-
-    def plot_temporal_heatmap_and_reconstruction(
-        self,
-        df: DataFrame,
-        start: int = 0,
-        stop: int = None,
-        imu_channel: int = 0,
-        figsize=(15, 7),
-        name: str = "_"
-    ):
-        """
-        Heatmap of temporal importance for bands + IMU recon.
-        """
-        T, bands = df.shape
-        stop = stop or T
-        stop = min(stop, T)
-        seg = df.iloc[start:stop]
-
-        imu_pred = self.baseline_pred.detach().numpy()[:, imu_channel]
-        imu_true = self.baseline_true.detach().numpy()[:, imu_channel]
-        mse = np.square(imu_pred - imu_true)[start:stop]
-
-        x = np.arange(start, stop)
-
-        fig = plt.figure(figsize=figsize)
-        gs = gridspec.GridSpec(3, 1, height_ratios=[2, 0.1, 1], hspace=0.3)
-        ax1 = fig.add_subplot(gs[0])
-        ax_cbar = fig.add_subplot(gs[1])
-        ax2 = fig.add_subplot(gs[2], sharex=ax1)
-
-        # heatmap bands
-        data = seg.T.values
-        vmin = np.max([data.min(), 1e-6])
-        vmax = data.max()
-        im = ax1.imshow(
-            data,
-            aspect='auto',
-            extent=[start, stop, 0, bands],
-            origin='lower',
-            cmap='viridis',
-            #norm=LogNorm(vmin=vmin, vmax=vmax)
-        )
-        # separators
-        for i in range(1, bands):
-            ax1.hlines(i, start, stop, colors='white', linestyles='dotted', linewidth=0.5)
-        ax1.set_yticks(np.arange(0.5, bands+0.5))
-        ax1.set_yticklabels(df.columns)
-        ax1.set_ylabel('Frequency Band')
-        ax1.set_title('Temporal Importance by Frequency Band')
-
-        # colorbar
-        cbar = fig.colorbar(im, cax=ax_cbar, orientation='horizontal')
-        cbar.set_label('ΔMSE (log scale)')
-
-        # reconstruction & mse
-        ax2.plot(x, imu_pred[start:stop], label='Reconstructed IMU', color='black')
-        ax2.plot(x, imu_true[start:stop], label='True IMU', color='green')
-        ax2.set_ylabel('IMU Value')
-        ax2.set_xlabel('Time Step')
-        ax2.grid(True)
-        ax3 = ax2.twinx()
-        ax3.plot(x, mse, label='ΔMSE', color='red', linestyle=':')
-        ax3.set_ylabel('ΔMSE')
-
-        # legend
-        l1, lab1 = ax2.get_legend_handles_labels()
-        l2, lab2 = ax3.get_legend_handles_labels()
-        ax2.legend(l1 + l2, lab1 + lab2, loc='upper right')
-
-        plt.savefig(self.plotpath + f'frequency_temporal_importance{name}.png')
-        plt.show()

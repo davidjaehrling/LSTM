@@ -35,8 +35,8 @@ class ModelLevelAnalysis(BaseAnalyser):
     Perform model-level explainability using Integrated Gradients and Input Gradients
     on the entire EEG sequence, then visualize heatmaps aligned with IMU reconstruction.
     """
-    def __init__(self, model: torch.nn.Module, dataset, loader: DataLoader, config: dict):
-        super().__init__(model, dataset, loader, config)
+    def __init__(self, model: torch.nn.Module, dataset, loader: DataLoader, config: dict, vis_window: tuple):
+        super().__init__(model, dataset, loader, config, vis_window)
         # use full EEG sequence for analysis
         self.eeg_full  = dataset.eeg.clone().detach()
 
@@ -66,108 +66,41 @@ class ModelLevelAnalysis(BaseAnalyser):
 
     def compute_integrated_gradients(self,
                                      imu_channel: int = 0,
-                                     timestep: int = -1,
-                                     start: int = 0,
-                                     stop: int = 5000) -> DataFrame:
+                                     timestep: int = -1,) -> pd.DataFrame:
         """
         Computes integrated gradients attribution for each time × channel
-        on the full EEG sequence.
+        on the full EEG sequence, and pads the result into full time length.
         Returns a DataFrame indexed by time, columns=channel names.
         """
-
         wrapper = LSTMWrapper(self.model, imu_channel, timestep)
         ig = IntegratedGradients(wrapper)
         dl = DeepLift(wrapper)
 
-        # prepare full input: [1, T, C]
-        sub_eeg = self.eeg_full[start:stop]
+        # prepare full input: [1, T_partial, C]
+        sub_eeg = self.eeg_full[self.start:self.stop]
         x = sub_eeg.unsqueeze(0).requires_grad_(True)
         baseline = self.get_baseline(x, mode="zero", noise_std=0.05)
+
         print("Compute attributions...")
-        attributions = dl.attribute(x, baseline)
-        # attributions, _ = ig.attribute(
-        #     x,
-        #     baseline,
-        #     n_steps=20,
-        #     internal_batch_size=5,  # process 5 interpolation points at once
-        #     return_convergence_delta=False,
-        # )
-
-        attr = attributions.squeeze(0).detach().numpy()  # [T, C]
-        df = pd.DataFrame(attr, columns=self.dataset.channel_names)
-        return df
-
-
-    def plot_model_level_heatmap_and_reconstruction(
-        self,
-        df: DataFrame,
-        start: int = 0,
-        stop: int = None,
-        imu_channel: int = 0,
-        figsize=(15, 7),
-        name: str = "_",
-        title: str = "",
-    ):
-        """
-        Plot a temporal heatmap of model-level attributions (IG or input gradients)
-        alongside the reconstructed and true IMU signal and its error.
-        """
-        # clamp df
-        df_seg = df.copy()
-
-        # prepare IMU data
-        imu_pred = self.baseline_pred.detach().cpu().numpy()[:, imu_channel]
-        imu_true = self.baseline_true.detach().cpu().numpy()[:, imu_channel]
-        mse = np.square(imu_pred - imu_true)[start:stop]
-
-        x = np.arange(start, stop)
-
-        # layout
-        fig = plt.figure(figsize=figsize)
-        gs = gridspec.GridSpec(3, 1, height_ratios=[3, 0.1, 2], hspace=0.3)
-        ax1 = fig.add_subplot(gs[0])
-        ax_cbar = fig.add_subplot(gs[1])
-        ax2 = fig.add_subplot(gs[2], sharex=ax1)
-
-        # heatmap
-        data = df_seg.T.values
-        vmin = np.max([data.min(), 1e-6])
-        vmax = data.max()
-        im = ax1.imshow(
-            data,
-            aspect="auto",
-            extent=[start, stop, 0, df.shape[1]],
-            origin="lower",
-            cmap="viridis",
+        # attributions = dl.attribute(x, baseline)  # shape: [1, T_partial, C]
+        attributions = ig.attribute(
+            x,
+            baseline,
+            n_steps=20,
+            internal_batch_size=5,
+            return_convergence_delta=False,
         )
-        # separators
-        for i in range(1, df.shape[1]):
-            ax1.hlines(i, start, stop, colors="white", linestyles="dotted", linewidth=0.5)
-        ax1.set_yticks(np.arange(0.5, df.shape[1] + 0.5))
-        ax1.set_yticklabels(df.columns)
-        ax1.set_ylabel("Channel")
-        ax1.set_title(f"{title}")
 
-        # colorbar
-        cbar = fig.colorbar(im, cax=ax_cbar, orientation="horizontal")
-        cbar.set_label("Attribution")
+        attr = attributions.squeeze(0).detach().numpy()  # shape: [T_partial, C]
 
-        # reconstruction & mse
-        ax2.plot(x, imu_pred[start:stop], label="Reconstructed IMU", color="black")
-        ax2.plot(x, imu_true[start:stop], label="True IMU", color="green")
-        ax2.set_ylabel("IMU")
-        ax2.set_xlabel("Time step")
-        ax2.grid(True)
+        # Create full-length DataFrame with NaNs
+        T_full = self.eeg_full.shape[0]
+        df_full = pd.DataFrame(
+            data=np.nan,
+            index=np.arange(T_full),
+            columns=self.dataset.channel_names
+        )
+        df_partial = pd.DataFrame(attr, columns=self.dataset.channel_names)
+        df_full.iloc[self.start:self.stop] = df_partial.values
 
-        ax3 = ax2.twinx()
-        ax3.plot(x, mse, label="ΔError", color="red", linestyle=":")
-        ax3.set_ylabel("MSE")
-
-        # legend
-        l1, lab1 = ax2.get_legend_handles_labels()
-        l2, lab2 = ax3.get_legend_handles_labels()
-        ax2.legend(l1 + l2, lab1 + lab2, loc="upper right")
-
-        plt.tight_layout()
-        plt.savefig(self.plotpath + f"model_level{name}.png")
-        plt.show()
+        return df_full
