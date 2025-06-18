@@ -1,112 +1,108 @@
+from typing import List, Tuple
+
 import torch
-from pandas import DataFrame
 from torch.utils.data import DataLoader
-from src.imu_recon.utils import reconstruct_signal
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.gridspec as gridspec
 
+from src.imu_recon.utils import reconstruct_signal
 from src.perturbation.analyse.base_analyser import BaseAnalyser
 
 
 class ChannelAnalyzer(BaseAnalyser):
-    # ----------------------------------------------------------------------
-    #   UTILITIES
-    # ----------------------------------------------------------------------
+    """
+    Analyze EEG channel importance for IMU signal reconstruction.
 
-    def perturb_channel(self, channel_idx):
-        """Creates a DataLoader with the specified channel perturbed."""
-        perturbed_samples = []
+    Methods:
+        perturb_channel: generate a DataLoader with channel perturbed signals.
+        analyze_channel_importance: compute global MSE impact for all channels.
+        compute_temporal_importance: compute MSE impact over time per channel.
+    """
 
+    def perturb_channel(self, channel_idx: int) -> DataLoader[Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Create a DataLoader with the specified EEG channel zeroed out.
+
+        Args:
+            channel_idx: Index of EEG channel to perturb.
+
+        Returns:
+            DataLoader yielding perturbed (eeg, imu) pairs.
+        """
+        perturbed_samples: List[Tuple[torch.Tensor, torch.Tensor]] = []
+
+        # Iterate through original loader, zeroing out the chosen channel
         for eeg_batch, imu_batch in self.loader:
-            for eeg, imu in zip(eeg_batch, imu_batch):  # Each eeg: [T, C], imu: [T, C]
-                eeg_perturbed = eeg.clone()
-                eeg_perturbed[:, channel_idx] = 0
-                perturbed_samples.append((eeg_perturbed, imu))
+            for eeg, imu in zip(eeg_batch, imu_batch):
+                eeg_mod = eeg.clone()
+                eeg_mod[:, channel_idx] = 0
+                perturbed_samples.append((eeg_mod, imu))
 
-        return DataLoader(
-            perturbed_samples, batch_size=self.loader.batch_size, shuffle=False
-        )
+        # Return new DataLoader with perturbed channel
+        return DataLoader(perturbed_samples, batch_size=self.loader.batch_size, shuffle=False)
 
-    # ----------------------------------------------------------------------
-    #   CHANNEL IMPORTANCE
-    # ----------------------------------------------------------------------
-
-    def analyze_channel_importance(self):
-        channel_importance = []
-        baseline_mse = torch.nn.functional.mse_loss(self.baseline_pred, self.baseline_true).item()
-
-        num_channels = self.loader.dataset[0][0].shape[1]
-
-        for ch_idx in range(num_channels):
-            print(f"Perturbing channel {self.dataset.channel_names[ch_idx]}")
-            perturbed_loader = self.perturb_channel(ch_idx)
-            perturbed_pred, perturbed_true = reconstruct_signal(self.model, perturbed_loader, self.dataset)
-            perturbed_mse = torch.nn.functional.mse_loss(perturbed_pred, perturbed_true).item()
-
-            importance = perturbed_mse - baseline_mse
-            channel_importance.append(importance)
-
-        self.plot_channel_importance(channel_importance)
-        return channel_importance
-
-    def plot_channel_importance(self, channel_importance, scale: str = "linear"):
-        plt.figure(figsize=(10, 5))
-        channels = self.dataset.channel_names
-        plt.bar(channels, channel_importance)
-        plt.xlabel('EEG Channel Index')
-        plt.ylabel('Increase in MSE after Perturbation')
-        plt.yscale(scale)
-        plt.title('EEG Channel Importance')
-        plt.grid(axis='y')
-        plt.tight_layout()
-        plt.savefig(self.plotpath + f"channel_importance.png")
-        plt.close()
-
-    # ----------------------------------------------------------------------
-    #   CHANNEL IMPORTANCE OVER TIME
-    # ----------------------------------------------------------------------
-    def compute_temporal_importance(self):
+    def analyze_channel_importance(self) -> List[float]:
         """
-        Computes temporal importance for all channels over the full test set.
-        Stores result in a pandas DataFrame with time index and channel columns.
-        """
-        # reconstruct baseline pred already computed
-        baseline_pred = self.baseline_pred
-        baseline_true = self.baseline_true
+        Compute per-channel increase in MSE when perturbed compared to baseline.
 
-        # compute baseline MSE per timestep
+        Returns:
+            List of MSE increases for each EEG channel.
+        """
+        # Baseline MSE on unperturbed data
+        baseline_mse = torch.nn.functional.mse_loss(
+            self.baseline_pred, self.baseline_true
+        ).item()
+
+        # Number of EEG channels: [batch, time, channels]
+        num_channels = len(self.dataset.channel_names)
+
+        importances = []
+        for idx in range(num_channels):
+            print(f"Perturbing channel {self.dataset.channel_names[idx]}")
+            # Reconstruct with channel idx zeroed
+            loader_mod = self.perturb_channel(idx)
+            pred_mod, true_mod = reconstruct_signal(self.model, loader_mod, self.dataset)
+            mse_mod = torch.nn.functional.mse_loss(pred_mod, true_mod).item()
+            importances.append(mse_mod - baseline_mse)
+
+        return importances
+
+
+    def compute_temporal_importance(self) -> pd.DataFrame:
+        """
+        Compute MSE impact per EEG channel over time.
+
+        Returns:
+            DataFrame indexed by time steps with channels as columns and ΔMSE values.
+        """
+        # Per-timestep baseline MSE (mean over batch)
         mse_baseline = (
-            torch.nn.functional.mse_loss(baseline_pred, baseline_true, reduction="none")
+            torch.nn.functional.mse_loss(
+                self.baseline_pred, self.baseline_true, reduction="none"
+            )
             .mean(dim=1)
             .detach()
             .numpy()
         )
 
-        # collect perturbed predictions
-        channel_imp = {}
+        temporal_imp: dict[int, np.ndarray] = {}
         num_channels = len(self.dataset.channel_names)
-        for ch in range(num_channels):
-            print(f"Computing temporal importance for channel {self.dataset.channel_names[ch]}...")
-            # create perturbed loader for this channel
-            perturbed_loader = self.perturb_channel(ch)
-            perturbed_pred, _ = reconstruct_signal(
-                self.model, perturbed_loader, self.dataset
-            )
-            mse_perturbed = (
+
+        for idx in range(num_channels):
+            print(f"Computing temporal importance for channel {self.dataset.channel_names[idx]}")
+            loader_mod = self.perturb_channel(idx)
+            pred_mod, _ = reconstruct_signal(self.model, loader_mod, self.dataset)
+            mse_mod = (
                 torch.nn.functional.mse_loss(
-                    perturbed_pred, baseline_true, reduction="none"
+                    pred_mod, self.baseline_true, reduction="none"
                 )
                 .mean(dim=1)
                 .detach()
                 .numpy()
             )
-            # delta MSE
-            channel_imp[ch] = mse_perturbed - mse_baseline
+            temporal_imp[idx] = mse_mod - mse_baseline
 
-        # create DataFrame: index=time steps, columns=channel indices or names
-        df = pd.DataFrame(channel_imp)
-        if hasattr(self.dataset, "channel_names"):
-            df.columns = self.dataset.channel_names
+        # Build DataFrame with time index and channel columns
+        df = pd.DataFrame.from_dict(temporal_imp, orient="columns")
+        df.columns = self.dataset.channel_names
         return df

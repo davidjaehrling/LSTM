@@ -24,3 +24,4 @@ saved_models/weights/
 
 # No pngs
 **/*.png
+**/*.pkl

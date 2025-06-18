@@ -8,10 +8,10 @@ import numpy as np
 
 
 def main():
-    # modelname, vis_window = "run_20250607_1945", (1500,2000)        # trained on dataset 0
+    modelname, vis_window = "run_20250607_1945", (1500,2000)        # trained on dataset 0
     # modelname, vis_window = "run_20250607_2210", (1500,2000)        # trained on dataset 0
     # modelname, vis_window = "run_20250612_1823", (3500,4000)      # trained on dataset 1
-    modelname, vis_window = "run_20250614_1646", (300,1100)       # trained on dataset 2
+    # modelname, vis_window = "run_20250614_1646", (300,1100)       # trained on dataset 2
 
     weights_path = f"../../saved_models/weights/{modelname}.pt"
     config_path = f"../../saved_models/configs/{modelname}.json"
@@ -40,28 +40,28 @@ def main():
     # PERTURBATION ANALYSIS
     # CHANNEL ANALYSIS
     ca = ChannelAnalyzer(model, ds, test_loader, config)
-    channel_deltas = ca.analyze_channel_importance()
-    # ca.save_pickle(channel_deltas, ca.respath + f"channel_deltas.pkl")
-    # channel_deltas = ca.load_pickle(ca.respath + f"channel_deltas.pkl")
+    # channel_deltas = ca.analyze_channel_importance()
+    # ca.save_pickle(channel_deltas, f"channel_deltas.pkl")
+    channel_deltas = ca.load_pickle(f"channel_deltas.pkl")
     important_channel = np.argsort(channel_deltas)[-6:][::-1].tolist()  # get first 4 important channels
-    df_ch_imp = ca.compute_temporal_importance()
-    # ca.save_pickle(df_ch_imp,ca.respath + f"tmp_channel_imp.pkl")
-    # df_ch_imp = ca.load_pickle(ca.respath + f"tmp_channel_imp.pkl")
+    # df_ch_imp = ca.compute_temporal_importance()
+    # ca.save_pickle(df_ch_imp, f"tmp_channel_imp.pkl")
+    df_ch_imp = ca.load_pickle(f"tmp_channel_imp.pkl")
 
     # FREQUENCY ANALYSIS
     fa = FrequencyAnalyzer(model, ds, test_loader, config)
-    band_deltas = fa.analyze_band_importance()
-    # fa.save_pickle(band_deltas, fa.respath + f"band_deltas.pkl")
-    # band_deltas = fa.load_pickle(fa.respath + f"band_deltas.pkl")
-    df_freq_imp = fa.compute_temporal_importance()
-    # fa.save_pickle(df_freq_imp, fa.respath + f"tmp_band_importance.pkl")
-    # df_freq_imp = fa.load_pickle(fa.respath + f"tmp_band_importance.pkl")
+    # band_deltas = fa.analyze_band_importance()
+    # fa.save_pickle(band_deltas, f"band_deltas.pkl")
+    band_deltas = fa.load_pickle(f"band_deltas.pkl")
+    # df_freq_imp = fa.compute_temporal_importance()
+    # fa.save_pickle(df_freq_imp, f"tmp_band_importance.pkl")
+    df_freq_imp = fa.load_pickle(f"tmp_band_importance.pkl")
 
     # MODEL LEVEL ANALYSIS
     mla = ModelLevelAnalysis(model, ds, test_loader, config)
-    df_ig = mla.compute_integrated_gradients(imu_channel=0)
-    # mla.save_pickle(df_ig, mla.respath + f"integrated_gradients.pkl")
-    # df_ig = mla.load_pickle(mla.respath + f"integrated_gradients.pkl")
+    # df_ig = mla.compute_integrated_gradients(imu_channel=0)
+    # mla.save_pickle(df_ig, f"integrated_gradients.pkl")
+    df_ig = mla.load_pickle(f"integrated_gradients.pkl")
 
 
     # PLOT
@@ -70,11 +70,11 @@ def main():
     plotter.plot_channel_importance(channel_deltas)
     plotter.plot_band_importance(band_deltas)
 
-    # plotter.plot_with_timeseries(
-    #     df_freq_imp,
-    #     spec_channel=important_channel,
-    #     filename="timeseries_analysis_frequencies.png",
-    # )
+    plotter.plot_with_timeseries(
+        df_freq_imp,
+        spec_channel=important_channel,
+        filename="timeseries_analysis_frequencies.png",
+    )
 
     plotter.plot_with_spectrogram(
         df_ig,

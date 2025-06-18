@@ -1,28 +1,28 @@
+from typing import Dict, List, Optional, Tuple
+
 import torch
-from pandas import DataFrame
 from torch.utils.data import DataLoader
-from src.imu_recon.utils import reconstruct_signal
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.gridspec as gridspec
+from pandas import DataFrame
 from scipy.signal import butter, filtfilt
+
+from src.imu_recon.utils import reconstruct_signal
 from src.perturbation.analyse.base_analyser import BaseAnalyser
 
 
 class FrequencyAnalyzer(BaseAnalyser):
     """
     Analyze model sensitivity to perturbations in EEG frequency bands.
-    """
-    # Canonical EEG bands (Hz)
-    DEFAULT_BANDS = {
-        'Delta': (1, 4),
-        'Theta': (4, 8),
-        'Alpha': (8, 12),
-        'Beta':  (12, 30),
-        'Gamma': (30, 50)
-    }
 
+    Methods:
+        _bandstop_filter: Apply Butterworth band-stop filter to data.
+        perturb_band: Remove specific frequency band by applying _bandstop_filter.
+        analyze_band_importance: Compute global ΔMSE per band.
+        compute_temporal_importance: Time-resolved ΔMSE per band.
+    """
+
+    # Default EEG bands (Hz)
     DEFAULT_BANDS = {
         "low Delta (1-2Hz)": (1, 2),
         "high Delta (2-4Hz)": (2, 4),
@@ -35,98 +35,146 @@ class FrequencyAnalyzer(BaseAnalyser):
     }
 
     @staticmethod
-    def _bandstop_filter(data: np.ndarray, low: float, high: float, fs: float, order: int = 5) -> np.ndarray:
+    def _bandstop_filter(
+        data: np.ndarray,
+        low: float,
+        high: float,
+        fs: float,
+        order: int = 5,
+    ) -> np.ndarray:
         """
-        Apply a Butterworth band-stop filter to the data.
+        Apply a Butterworth band-stop filter data.
+
         Args:
-            data: array of shape [T, C]
-            low: lower cutoff freq (Hz)
-            high: higher cutoff freq (Hz)
-            fs: sampling freq (Hz)
+            data: Array of shape (T, C) where T samples, C channels.
+            low: Lower cutoff frequency in Hz.
+            high: Upper cutoff frequency in Hz.
+            fs: Sampling frequency in Hz.
+            order: Filter order.
+
         Returns:
-            filtered data same shape
+            Filtered data array of same shape.
         """
-        nyq = 0.5 * fs
-        low_norm = low / nyq
-        high_norm = high / nyq
-        b, a = butter(order, [low_norm, high_norm], btype='bandstop')
+        # Normalize cutoff frequencies
+        nyquist = 0.5 * fs
+        low_norm = low / nyquist
+        high_norm = high / nyquist
+        # Design band-stop filter
+        b, a = butter(order, [low_norm, high_norm], btype="bandstop")
+        # Apply filtering along time axis
         return filtfilt(b, a, data, axis=0)
 
-    def perturb_band(self, band: str):
+    def perturb_band(
+        self,
+        band: str,
+    ) -> DataLoader[Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Generate a perturbed dataset where the specified band is removed.
-        """
-        low, high = self.DEFAULT_BANDS[band]
-        perturbed = []
-        for eeg_batch, imu_batch in self.loader:
-            # eeg_batch: [B, T, C]
-            eeg_np = eeg_batch.numpy()
-            for i in range(eeg_np.shape[0]):
-                data = eeg_np[i]  # [T, C]
-                filtered = self._bandstop_filter(data, low, high, self.fs).copy()
-                eeg_tensor = torch.tensor(filtered, dtype=torch.float32)
-                perturbed.append((eeg_tensor, imu_batch[i]))
-        return DataLoader(perturbed, batch_size=self.loader.batch_size, shuffle=False)
+        Zero out a specific EEG frequency band by applying band-stop filter.
 
-    def analyze_band_importance(self, bands: dict = None):
+        Args:
+            band: Name of the band to remove (key in DEFAULT_BANDS).
+
+        Returns:
+            DataLoader yielding perturbed (eeg, imu) pairs.
         """
-        Compute ΔMSE for each band removal, comparing to baseline.
+        # Determine frequency range for band removal
+        low, high = self.DEFAULT_BANDS[band]
+        perturbed_samples: List[Tuple[torch.Tensor, torch.Tensor]] = []
+
+        # Iterate through dataset batches
+        for eeg_batch, imu_batch in self.loader:
+            # Convert batch to NumPy for filtering
+            eeg_np = eeg_batch.numpy()  # shape: [B, T, C]
+            for idx in range(eeg_np.shape[0]):
+                # Extract single trial data
+                trial_data = eeg_np[idx]  # shape: [T, C]
+                # Remove band via band-stop filter
+                filtered = self._bandstop_filter(trial_data, low, high, self.fs)
+                # Convert back to tensor
+                eeg_tensor = torch.tensor(filtered.copy(), dtype=torch.float32)
+                perturbed_samples.append((eeg_tensor, imu_batch[idx]))
+
+        # Return new DataLoader with same batch size
+        return DataLoader(
+            perturbed_samples,
+            batch_size=self.loader.batch_size,
+            shuffle=False,
+        )
+
+    def analyze_band_importance(
+        self,
+    ) -> Dict[str, float]:
         """
-        bands = bands or self.DEFAULT_BANDS
+        Compute increase in MSE for each band removal compared to baseline.
+
+        Returns:
+            Dictionary mapping band names to ΔMSE values.
+        """
+        bands = self.DEFAULT_BANDS
+        # Baseline MSE on full EEG
         baseline_mse = torch.nn.functional.mse_loss(
             self.baseline_pred, self.baseline_true
         ).item()
-        results = {}
+
+        results: Dict[str, float] = {}
         for name, (low, high) in bands.items():
             print(f"Perturbing band {name}: {low}-{high} Hz")
+            # Generate perturbed data loader
             pert_loader = self.perturb_band(name)
-            pert_pred, pert_true = reconstruct_signal(self.model, pert_loader, self.dataset)
+            # Reconstruct and compute MSE
+            pert_pred, pert_true = reconstruct_signal(
+                self.model, pert_loader, self.dataset
+            )
             mse = torch.nn.functional.mse_loss(pert_pred, pert_true).item()
             results[name] = mse - baseline_mse
-        self.plot_band_importance(results)
+
         return results
 
-    def plot_band_importance(self, results: dict, scale: str = "linear"):
-        labels = list(results.keys())
-        vals = [results[b] for b in labels]
-        plt.figure(figsize=(8, 4))
-        plt.bar(labels, vals)
-        plt.xlabel('Frequency Band')
-        plt.xticks(rotation=90)
-        plt.ylabel('Increase in MSE after Band Removal')
-        plt.yscale(scale)
-        plt.title('Frequency Band Importance')
-        plt.grid(axis='y')
-        plt.tight_layout()
-        plt.savefig(self.plotpath + f'frequency_band_importance.png')
-        plt.close()
+    def compute_temporal_importance(
+        self,
+    ) -> DataFrame:
+        """
+        Compute MSE impact per band removal over time.
 
-    def compute_temporal_importance(self, bands: dict = None) -> DataFrame:
+        Returns:
+            pandas DataFrame with time indices as rows and bands as columns.
         """
-        Compute temporal ΔMSE for each band removal over full test set.
-        Returns a DataFrame time × band.
-        """
-        bands = bands or self.DEFAULT_BANDS
-        # baseline MSE per timepoint
+        bands = self.DEFAULT_BANDS
+        # Baseline MSE per time step (averaged over samples)
         mse_base = (
             torch.nn.functional.mse_loss(
-                self.baseline_pred, self.baseline_true, reduction='none'
+                self.baseline_pred,
+                self.baseline_true,
+                reduction="none",
             )
             .mean(dim=1)
-            .detach().numpy()
+            .detach()
+            .cpu()
+            .numpy()
         )
-        imp = {}
+
+        temporal_data: Dict[str, np.ndarray] = {}
         for name in bands:
-            print(f"Temporal importance for band {name}")
+            print(f"Computing temporal importance for band {name}")
             loader_bs = self.perturb_band(name)
-            pert_pred, _ = reconstruct_signal(self.model, loader_bs, self.dataset)
+            pert_pred, _ = reconstruct_signal(
+                self.model, loader_bs, self.dataset
+            )
+            # MSE per time for perturbed
             mse_pert = (
                 torch.nn.functional.mse_loss(
-                    pert_pred, self.baseline_true, reduction='none'
+                    pert_pred,
+                    self.baseline_true,
+                    reduction="none",
                 )
                 .mean(dim=1)
-                .detach().numpy()
+                .detach()
+                .cpu()
+                .numpy()
             )
-            imp[name] = mse_pert - mse_base
-        df = pd.DataFrame(imp)
+            # ΔMSE time series
+            temporal_data[name] = mse_pert - mse_base
+
+        # Construct DataFrame: rows=time, columns=bands
+        df = pd.DataFrame(temporal_data)
         return df
