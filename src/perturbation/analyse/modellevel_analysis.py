@@ -14,43 +14,43 @@ from src.perturbation.analyse.base_analyser import BaseAnalyser
 
 class LSTMWrapper(torch.nn.Module):
     """
-    Wrap LSTM-based model to target and mean a specific IMU channel's output for attribution.
+    Wrap LSTM-based model to target and mean a specific Target channel's output for attribution.
 
     Attributes:
         model: Underlying PyTorch model.
-        imu_channel: Index of IMU channel to attribute.
+        target_ch: Index of Target channel to attribute.
     """
     def __init__(
         self,
         model: torch.nn.Module,
-        imu_channel: int = 0,
+        target_ch: int = 0,
     ) -> None:
         super().__init__()
         self.model = model
-        self.imu_channel = imu_channel
+        self.target_ch = target_ch
 
     def forward(self, x: Tensor) -> Tensor:
         """
         Forward pass to extract target output for attribution.
 
         Args:
-            x: EEG input of shape [B, T, C].
+            x: Input of shape [B, T, C].
 
         Returns:
-            Tensor of shape [B] representing aggregated IMU channel output.
+            Tensor of shape [B] representing aggregated Target channel output.
         """
         # Model returns [B, T, D]
         output = self.model(x)
         # Select channel across time: average over timesteps
-        return output[:, :, self.imu_channel].mean(dim=1)
+        return output[:, :, self.target_ch].mean(dim=1)
 
 
 class ModelLevelAnalysis(BaseAnalyser):
     """
-    Explain EEG→IMU reconstruction at model level using attribution methods from captum.
+    Explain Input->Output reconstruction at model level using attribution methods from captum.
 
     Attributes:
-        eeg_full: Full EEG sequence for analysis.
+        inp_full: Full Input sequence for analysis.
         start: Start index for investigated Window.
         stop: End index for investigated Window.
     """
@@ -65,8 +65,8 @@ class ModelLevelAnalysis(BaseAnalyser):
     ) -> None:
         # Initialize parent and compute baseline reconstructions
         super().__init__(model, dataset, loader, config, fs)
-        # Store full EEG and visualization window
-        self.eeg_full = dataset.eeg.clone().detach()
+        # Store full Input and visualization window
+        self.inp_full = dataset.inp.clone().detach()
         self.start, self.stop = vis_window
 
     def get_baseline(
@@ -92,18 +92,18 @@ class ModelLevelAnalysis(BaseAnalyser):
         # mean will set baseline to mean of the whole dataset
         if mode == "mean":
             # Expand dataset mean over batch and time
-            base = self.dataset.mean_eeg[None, None, :]
+            base = self.dataset.mean_inp[None, None, :]
             return base.expand_as(x)
         # mean will set baseline to mean of the whole dataset and adds random noise
         if mode == "mean+noise":
-            base = self.dataset.mean_eeg[None, None, :].expand_as(x)
+            base = self.dataset.mean_inp[None, None, :].expand_as(x)
             noise = torch.randn_like(x) * noise_std
             return base + noise
         raise ValueError(f"Unknown baseline mode: {mode}")
 
     def compute_integrated_gradients(
         self,
-        imu_channel: int = 0,
+        target_ch: int = 0,
         n_steps: int = 20,
         internal_bs: int = 5,
     ) -> DataFrame:
@@ -111,7 +111,7 @@ class ModelLevelAnalysis(BaseAnalyser):
         Compute Integrated Gradients attributions for EEG inputs.
 
         Args:
-            imu_channel: Target IMU channel index.
+            target_ch: Target channel index.
             n_steps: Number of IG steps.
             internal_bs: Batch size for IG internal computation.
 
@@ -119,12 +119,12 @@ class ModelLevelAnalysis(BaseAnalyser):
             DataFrame of shape [T_full, C] with attributions.
         """
         # Wrap model to target specific output
-        wrapper = LSTMWrapper(self.model, imu_channel)
+        wrapper = LSTMWrapper(self.model, target_ch)
         ig = IntegratedGradients(wrapper)
 
         # Extract partial EEG window for attribution
-        sub_eeg = self.eeg_full[self.start : self.stop]
-        x = sub_eeg.unsqueeze(0).requires_grad_(True)
+        sub_inp = self.inp_full[self.start : self.stop]
+        x = sub_inp.unsqueeze(0).requires_grad_(True)
         # Baseline input
         baseline = self.get_baseline(x, mode="zero", noise_std=0.05)
 
@@ -140,7 +140,7 @@ class ModelLevelAnalysis(BaseAnalyser):
         attr_np = attributions.squeeze(0).detach().cpu().numpy()
 
         # Build full-length DataFrame, filling outside window with NaN
-        T_full = self.eeg_full.shape[0]
+        T_full = self.inp_full.shape[0]
         df_full = pd.DataFrame(
             np.nan,
             index=np.arange(T_full),

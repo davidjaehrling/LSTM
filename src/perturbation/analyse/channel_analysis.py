@@ -5,13 +5,13 @@ from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
 
-from src.imu_recon.utils import reconstruct_signal
+from src.utils.utils import reconstruct_signal
 from src.perturbation.analyse.base_analyser import BaseAnalyser
 
 
 class ChannelAnalyzer(BaseAnalyser):
     """
-    Analyze EEG channel importance for IMU signal reconstruction.
+    Analyze EEG channel importance for Target signal reconstruction.
 
     Methods:
         perturb_channel: generate a DataLoader with channel perturbed signals.
@@ -27,16 +27,16 @@ class ChannelAnalyzer(BaseAnalyser):
             channel_idx: Index of EEG channel to perturb.
 
         Returns:
-            DataLoader yielding perturbed (eeg, imu) pairs.
+            DataLoader yielding perturbed (inp, out) pairs.
         """
         perturbed_samples: List[Tuple[torch.Tensor, torch.Tensor]] = []
 
         # Iterate through original loader, zeroing out the chosen channel
-        for eeg_batch, imu_batch in self.loader:
-            for eeg, imu in zip(eeg_batch, imu_batch):
-                eeg_mod = eeg.clone()
-                eeg_mod[:, channel_idx] = 0
-                perturbed_samples.append((eeg_mod, imu))
+        for inp_batch, out_batch in self.loader:
+            for inp, out in zip(inp_batch, out_batch):
+                inp_mod = inp.clone()
+                inp_mod[:, channel_idx] = 0
+                perturbed_samples.append((inp_mod, out))
 
         # Return new DataLoader with perturbed channel
         return DataLoader(perturbed_samples, batch_size=self.loader.batch_size, shuffle=False)

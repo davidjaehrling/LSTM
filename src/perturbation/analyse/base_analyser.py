@@ -1,12 +1,12 @@
 import os
 import pickle
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Union
 
 import torch
 from torch.utils.data import DataLoader
 from pandas import DataFrame
 
-from src.imu_recon.utils import reconstruct_signal
+from src.utils.utils import reconstruct_signal
 
 
 class BaseAnalyser:

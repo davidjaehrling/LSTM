@@ -1,4 +1,4 @@
-from src.imu_recon.train import main
+from src.lstm_train.train import main
 import optuna
 
 

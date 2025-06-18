@@ -1,4 +1,4 @@
-# src/imu_recon/tokenizer/tokenizer.py
+# src/lstm_train/tokenizer/tokenizer.py
 from typing import List, Union
 import numpy as np
 import torch

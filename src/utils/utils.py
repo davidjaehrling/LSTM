@@ -1,4 +1,4 @@
-# src/imu_recon/utils.py
+# src/lstm_train/utils.py
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
 
-def plot_imu_reconstruction(
+def plot_reconstruction(
     true: Tensor,
     pred: Tensor,
     channel: int = 0,
@@ -15,11 +15,11 @@ def plot_imu_reconstruction(
     title: str = "IMU Reconstruction",
 ) -> plt.Figure:
     """
-    Create a matplotlib Figure comparing predicted and true IMU signals.
+    Create a matplotlib Figure comparing predicted and true Output signals.
 
     Args:
-        true (Tensor): shape [T, C] or [C], true IMU data.
-        pred (Tensor): same shape as true, predicted IMU data.
+        true (Tensor): shape [T, C] or [C], true Output data.
+        pred (Tensor): same shape as true, predicted Output data.
         channel (int): which channel (axis) to plot.
         timesteps (int, optional): truncate to first N timesteps.
         title (str): plot title.
@@ -58,8 +58,8 @@ def reconstruct_signal(
 
     Returns
     -------
-    full_pred : Tensor  [seq_len, imu_dim]  – de-standardised prediction
-    full_true : Tensor  [seq_len, imu_dim]  – de-standardised ground truth
+    full_pred : Tensor  [seq_len, out_dim]  – de-standardised prediction
+    full_true : Tensor  [seq_len, out_dim]  – de-standardised ground truth
     """
     # Example prediction to get sequence shapes
     x0, y0 = next(iter(loader))
@@ -68,7 +68,7 @@ def reconstruct_signal(
 
     window  = preds.shape[1]
     stride  = window // 2
-    imu_dim = base_ds.imu.shape[1]
+    out_dim = base_ds.out.shape[1]
 
     # Determine first & last window indices covered by loader
     first_w = 0
@@ -77,18 +77,18 @@ def reconstruct_signal(
     seq_len = (last_w - first_w) * stride + window       # length of segment we reconstruct
 
     # Buffers for overlap-add stitching
-    pred_sum   = torch.zeros(seq_len, imu_dim)
+    pred_sum   = torch.zeros(seq_len, out_dim)
     pred_count = torch.zeros(seq_len, 1)
 
-    true_sum = torch.zeros(seq_len, imu_dim)
+    true_sum = torch.zeros(seq_len, out_dim)
 
     net.eval()
     win_ptr = 0                                          # counts windows we’ve seen so far
     with torch.no_grad():
         for x_batch, y_batch in loader:                        # loader must have shuffle=False
             preds, true, _ = net.predict(x_batch, y_batch)                         # [B, T, imu_dim]
-            preds = base_ds.destandardize_imu(preds)     # de-standardise
-            true = base_ds.destandardize_imu(true)
+            preds = base_ds.destandardize(preds)     # de-standardise
+            true = base_ds.destandardize(true)
 
 
             bsz, _, _ = preds.shape

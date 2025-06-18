@@ -1,7 +1,7 @@
 import json
 import torch
-from src.imu_recon.models import LSTMRegressor
-from src.imu_recon.dataset import EEGIMUDataset
+from src.lstm_train.models import LSTMRegressor
+from src.utils import EEGIMUDataset
 from pathlib import Path
 from src.perturbation.analyse import ChannelAnalyzer, FrequencyAnalyzer, ModelLevelAnalysis, Plotter
 import numpy as np
@@ -33,27 +33,27 @@ def main():
     )
 
     # LOAD MODEL
-    model = LSTMRegressor(in_dim=16, config=config, out_dim=12)
+    model = LSTMRegressor(in_dim=ds.inp_dim, config=config, out_dim=ds.out_dim)
     model.load_state_dict(torch.load(weights_path, map_location="cpu"))
     model.eval()
 
     # PERTURBATION ANALYSIS
     # CHANNEL ANALYSIS
     ca = ChannelAnalyzer(model, ds, test_loader, config)
-    # channel_deltas = ca.analyze_channel_importance()
+    channel_deltas = ca.analyze_channel_importance()
     # ca.save_pickle(channel_deltas, f"channel_deltas.pkl")
     channel_deltas = ca.load_pickle(f"channel_deltas.pkl")
     important_channel = np.argsort(channel_deltas)[-6:][::-1].tolist()  # get first 4 important channels
-    # df_ch_imp = ca.compute_temporal_importance()
+    df_ch_imp = ca.compute_temporal_importance()
     # ca.save_pickle(df_ch_imp, f"tmp_channel_imp.pkl")
     df_ch_imp = ca.load_pickle(f"tmp_channel_imp.pkl")
 
     # FREQUENCY ANALYSIS
     fa = FrequencyAnalyzer(model, ds, test_loader, config)
-    # band_deltas = fa.analyze_band_importance()
+    band_deltas = fa.analyze_band_importance()
     # fa.save_pickle(band_deltas, f"band_deltas.pkl")
     band_deltas = fa.load_pickle(f"band_deltas.pkl")
-    # df_freq_imp = fa.compute_temporal_importance()
+    df_freq_imp = fa.compute_temporal_importance()
     # fa.save_pickle(df_freq_imp, f"tmp_band_importance.pkl")
     df_freq_imp = fa.load_pickle(f"tmp_band_importance.pkl")
 

@@ -1,7 +1,7 @@
 import torch
-from src.imu_recon.dataset import EEGIMUDataset
-from src.imu_recon.models import LSTMRegressor, TokenizedEmbeddingLSTMRegressor, TokenizedLSTMRegressor
-from src.imu_recon.utils import plot_imu_reconstruction, reconstruct_signal
+from src.utils import EEGIMUDataset
+from src.lstm_train.models import LSTMRegressor
+from src.utils.utils import plot_reconstruction, reconstruct_signal
 from pathlib import Path
 from typing import Dict
 import json
@@ -13,7 +13,7 @@ from datetime import datetime
 
 def main(config: Dict) -> float:
     # Define Dataset
-    csv_folder = "../../data/EEG_IMU/"
+    csv_folder = f"../../data/{config['data_type']}/"
     csv_path = sorted(Path(csv_folder).glob("*.csv"))[config["dataset"]]
     ds = EEGIMUDataset(csv_path, window=config["window"], stride=config["stride"], bandpass = config["bandpass"])
 
@@ -21,7 +21,7 @@ def main(config: Dict) -> float:
     train_loader, val_loader, test_loader = ds.train_test_val_split(config["batch_size"])
 
     # LOAD MODEL
-    net = LSTMRegressor(in_dim=16, config=config, out_dim=12)
+    net = LSTMRegressor(in_dim=ds.inp_dim, config=config, out_dim=ds.out_dim)
 
     # START TENSORBOARD WRITER
     run_name = f"run_{datetime.now().strftime('%Y%m%d_%H%M')}"
@@ -45,7 +45,6 @@ def main(config: Dict) -> float:
         # Tensorboard
         writer.add_scalar("Loss/train", train_loss, epoch)
         writer.add_scalar("Loss/val", val_loss, epoch)
-        # writer.add_histogram("lstm/weight_hh_l0", net.lstm.lstm.weight_hh_l0, epoch)
 
         print(f"epoch: {epoch} train loss: {train_loss:.4f} val loss: {val_loss:.4f}")
 
@@ -77,7 +76,7 @@ def main(config: Dict) -> float:
     )
 
     # Plot an entire IMU channel (e.g. x-axis)
-    fig = plot_imu_reconstruction(
+    fig = plot_reconstruction(
         true=full_true,
         pred=full_pred,
         channel=0,
@@ -108,9 +107,10 @@ if __name__ == "__main__":
         "dataset": 0,
         "stride": 64,
         "model": "LSTM",
-        "epochs": 200,
+        "epochs": 0,
         "patience": 20,
         "bandpass": (1, 12),
+        "data_type": "EEG_IMU",
     }
 
     loss, compl = main(config)

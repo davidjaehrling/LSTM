@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import torch
 from torch.utils.data import DataLoader
@@ -7,7 +7,7 @@ import pandas as pd
 from pandas import DataFrame
 from scipy.signal import butter, filtfilt
 
-from src.imu_recon.utils import reconstruct_signal
+from src.utils.utils import reconstruct_signal
 from src.perturbation.analyse.base_analyser import BaseAnalyser
 
 
@@ -75,24 +75,24 @@ class FrequencyAnalyzer(BaseAnalyser):
             band: Name of the band to remove (key in DEFAULT_BANDS).
 
         Returns:
-            DataLoader yielding perturbed (eeg, imu) pairs.
+            DataLoader yielding perturbed (eeg, target) pairs.
         """
         # Determine frequency range for band removal
         low, high = self.DEFAULT_BANDS[band]
         perturbed_samples: List[Tuple[torch.Tensor, torch.Tensor]] = []
 
         # Iterate through dataset batches
-        for eeg_batch, imu_batch in self.loader:
+        for inp_batch, out_batch in self.loader:
             # Convert batch to NumPy for filtering
-            eeg_np = eeg_batch.numpy()  # shape: [B, T, C]
-            for idx in range(eeg_np.shape[0]):
+            inp_np = inp_batch.numpy()  # shape: [B, T, C]
+            for idx in range(inp_np.shape[0]):
                 # Extract single trial data
-                trial_data = eeg_np[idx]  # shape: [T, C]
+                trial_data = inp_np[idx]  # shape: [T, C]
                 # Remove band via band-stop filter
                 filtered = self._bandstop_filter(trial_data, low, high, self.fs)
                 # Convert back to tensor
-                eeg_tensor = torch.tensor(filtered.copy(), dtype=torch.float32)
-                perturbed_samples.append((eeg_tensor, imu_batch[idx]))
+                inp_tensor = torch.tensor(filtered.copy(), dtype=torch.float32)
+                perturbed_samples.append((inp_tensor, out_batch[idx]))
 
         # Return new DataLoader with same batch size
         return DataLoader(

@@ -16,7 +16,7 @@ from src.perturbation.analyse.base_analyser import BaseAnalyser
 
 class Plotter(BaseAnalyser):
     """
-    Plotting utilities for EEG→IMU analysis.
+    Plotting utilities for eeg model analysis.
 
     Provides heatmap, bar, spectrogram, timeseries, and reconstruction plots
     integrating channel/frequency importance and model reconstructions.
@@ -125,7 +125,7 @@ class Plotter(BaseAnalyser):
         self,
         ax: plt.Axes,
         cax: plt.Axes,
-        eeg_seg: np.ndarray,
+        inp_seg: np.ndarray,
         spec_channel: Union[int, str],
         method: str = "morlet",
         log_scale: bool = True,
@@ -136,18 +136,18 @@ class Plotter(BaseAnalyser):
         Args:
             ax: Axes for spectrogram.
             cax: Axes for colorbar.
-            eeg_seg: EEG data segment (time × channels).
+            inp_seg: Input data segment (time × channels).
             spec_channel: Index or name of channel to analyze.
             method: 'stft' or 'morlet'.
             log_scale: Whether to log-scale frequency axis.
         """
         # Select channel data
-        if eeg_seg.ndim == 2:
+        if inp_seg.ndim == 2:
             if isinstance(spec_channel, str):
                 spec_channel = self.dataset.channel_names.index(spec_channel)
-            data = eeg_seg[:, spec_channel]
+            data = inp_seg[:, spec_channel]
         else:
-            data = eeg_seg
+            data = inp_seg
 
         if method == "stft":
             # Compute short-time Fourier transform
@@ -181,15 +181,15 @@ class Plotter(BaseAnalyser):
     def _plot_timeseries(
         self,
         ax: plt.Axes,
-        eeg_seg: np.ndarray,
+        inp_seg: np.ndarray,
         channels: List[int],
     ) -> None:
         """
-        Overlay multiple EEG channel waveforms.
+        Overlay multiple Input channel waveforms.
 
         Args:
             ax: Axes for timeseries.
-            eeg_seg: EEG data (time × channels).
+            inp_seg: Input data (time × channels).
             channels: List of channel indices.
         """
         times = np.arange(self.start, self.stop) / self.fs
@@ -198,7 +198,7 @@ class Plotter(BaseAnalyser):
             name = self.dataset.channel_names[idx]
             linewidth = max(1.0, 2.5 - 0.4 * level)
             intensity = min(1.0, 0.2 + 0.15 * level)
-            ax.plot(times, eeg_seg[:, idx],
+            ax.plot(times, inp_seg[:, idx],
                     label=name, linewidth=linewidth,
                     color=(intensity, intensity, intensity))
         ax.set_title(f"EEG Timeseries: {', '.join(self.dataset.channel_names[i] for i in channels)}")
@@ -210,18 +210,18 @@ class Plotter(BaseAnalyser):
     def _plot_reconstruction(
         self,
         ax: plt.Axes,
-        imu_channel: int,
+        target_ch: int,
     ) -> None:
         """
-        Plot reconstructed vs. true IMU signal and MSE overlay.
+        Plot reconstructed vs. true Target signal and MSE overlay.
 
         Args:
             ax: Axes for reconstruction plot.
-            imu_channel: Index of IMU channel.
+            target_ch: Index of Target channel.
         """
         # Extract predicted and true signals
-        pred = self.baseline_pred.detach().cpu().numpy()[:, imu_channel]
-        true = self.baseline_true.detach().cpu().numpy()[:, imu_channel]
+        pred = self.baseline_pred.detach().cpu().numpy()[:, target_ch]
+        true = self.baseline_true.detach().cpu().numpy()[:, target_ch]
         times = np.arange(self.start, self.stop) / self.fs
         # Compute MSE time course
         mse = np.square(pred - true)[self.start:self.stop]
@@ -229,7 +229,7 @@ class Plotter(BaseAnalyser):
         ax.plot(times, pred[self.start:self.stop], label="Reconstructed", linestyle="-", color="black")
         ax.plot(times, true[self.start:self.stop], label="True", linestyle="--", color="green")
         ax.set_xlabel("Time (s)")
-        ax.set_ylabel("IMU value")
+        ax.set_ylabel("Target value")
         ax.grid(True)
 
         # Secondary axis for MSE
@@ -282,17 +282,17 @@ class Plotter(BaseAnalyser):
     def plot_heatmap_and_reconstruction(
         self,
         df: DataFrame,
-        imu_channel: int = 0,
+        target_ch: int = 0,
         filename: str = "heatmap_recon.png",
         figsize: Tuple[int, int] = (15, 7),
     ) -> None:
         """
-        Composite plot: temporal heatmap and IMU reconstruction.
+        Composite plot: temporal heatmap and Target reconstruction.
         """
         df_seg = df.iloc[self.start:self.stop]
         fig, axes = self._create_figure([3, 0.1, 2], figsize)
         self._plot_heatmap(axes[0], axes[1], df_seg, "Channel", "Temporal Importance")
-        self._plot_reconstruction(axes[2], imu_channel)
+        self._plot_reconstruction(axes[2], target_ch)
         os.makedirs(self.plotpath, exist_ok=True)
         fig.savefig(os.path.join(self.plotpath, filename))
         plt.close(fig)
@@ -300,16 +300,16 @@ class Plotter(BaseAnalyser):
     def plot_with_spectrogram(
         self,
         df: DataFrame,
-        imu_channel: int = 0,
+        target_ch: int = 0,
         spec_channel: int = 0,
         filename: str = "spectrogram_analysis.png",
         figsize=(15, 12),
     ):
         """
-        Composite plot: temporal heatmap, spectogram and IMU reconstruction.
+        Composite plot: temporal heatmap, spectogram and Target reconstruction.
         """
         df_seg = df.iloc[self.start : self.stop]
-        eeg_seg = self.dataset.eeg.detach().numpy()[self.start : self.stop]
+        inp_seg = self.dataset.inp.detach().numpy()[self.start : self.stop]
         fig, axes = self._create_figure([2, 0.1, 2, 0.1, 2], figsize)
         # Heatmap
         self._plot_heatmap(
@@ -317,10 +317,10 @@ class Plotter(BaseAnalyser):
         )
         # Spectrogram
         self._plot_spectrogram(
-            axes[2], axes[3], eeg_seg, spec_channel[0], method="morlet", log_scale=False
+            axes[2], axes[3], inp_seg, spec_channel[0], method="morlet", log_scale=False
         )
         # Reconstruction
-        self._plot_reconstruction(axes[4], imu_channel)
+        self._plot_reconstruction(axes[4], target_ch)
         plt.tight_layout()
         plt.savefig(os.path.join(self.plotpath, filename))
         plt.close()
@@ -328,25 +328,25 @@ class Plotter(BaseAnalyser):
     def plot_with_timeseries(
         self,
         df: DataFrame,
-        imu_channel: int = 0,
+        target_ch: int = 0,
         spec_channel: list = (0),
         filename: str = "Analysis_with_timeseries.png",
         figsize=(15, 12),
     ):
         """
-        Composite plot: temporal heatmap, timeseries and IMU reconstruction.
+        Composite plot: temporal heatmap, timeseries and Target reconstruction.
         """
         df_seg = df.iloc[self.start : self.stop]
-        eeg_seg = self.dataset.eeg.detach().numpy()[self.start : self.stop]
+        inp_seg = self.dataset.inp.detach().numpy()[self.start : self.stop]
         fig, axes = self._create_figure([2, 0.1, 2, 2], figsize)
         # Heatmap
         self._plot_heatmap(
             axes[0], axes[1], df_seg, "Channel", "Temporal Importance Heatmap"
         )
         # Timeseries
-        self._plot_timeseries(axes[2], eeg_seg, spec_channel)
+        self._plot_timeseries(axes[2], inp_seg, spec_channel)
         # Reconstruction
-        self._plot_reconstruction(axes[3], imu_channel)
+        self._plot_reconstruction(axes[3], target_ch)
         plt.tight_layout()
         plt.savefig(os.path.join(self.plotpath, filename))
         plt.close()
@@ -366,12 +366,12 @@ class Plotter(BaseAnalyser):
         2. Heatmap channel frequency importance
         3. Heatmap integrated gradient
         4. Spectogram
-        5. IMU reconstruction
+        5. Target reconstruction
         """
         df_ch_imp_seg = df_ch_imp.iloc[self.start : self.stop]
         df_freq_imp_seg = df_freq_imp.iloc[self.start : self.stop]
         df_ig_seg = df_ig.iloc[self.start : self.stop]
-        eeg_seg = self.dataset.eeg.detach().numpy()[self.start : self.stop]
+        inp_seg = self.dataset.inp.detach().numpy()[self.start : self.stop]
         fig, axes = self._create_figure([2, 0.1, 2, 0.1, 2, 0.1, 2, 2], figsize)
         # Heatmap Channel Importance
         self._plot_heatmap(
@@ -382,7 +382,7 @@ class Plotter(BaseAnalyser):
         # Heatmap Integrated Gradients
         self._plot_heatmap(axes[4], axes[5], df_ig_seg, "Channel", "")
         # Timeseries
-        self._plot_timeseries(axes[6], eeg_seg, spec_channel)
+        self._plot_timeseries(axes[6], inp_seg, spec_channel)
         # Reconstruction
         self._plot_reconstruction(axes[7], 0)
         plt.tight_layout()
