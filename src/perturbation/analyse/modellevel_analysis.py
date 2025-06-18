@@ -35,10 +35,12 @@ class ModelLevelAnalysis(BaseAnalyser):
     Perform model-level explainability using Integrated Gradients and Input Gradients
     on the entire EEG sequence, then visualize heatmaps aligned with IMU reconstruction.
     """
-    def __init__(self, model: torch.nn.Module, dataset, loader: DataLoader, config: dict, vis_window: tuple):
-        super().__init__(model, dataset, loader, config, vis_window)
+    def __init__(self, model: torch.nn.Module, dataset, loader: DataLoader, config: dict, fs: float = 125.0, vis_window: tuple = (0, 5000)):
+        super().__init__(model, dataset, loader, config, fs)
         # use full EEG sequence for analysis
         self.eeg_full  = dataset.eeg.clone().detach()
+        self.start = vis_window[0]
+        self.stop = vis_window[1]
 
     def get_baseline(self, x: torch.Tensor, mode="zero", noise_std=0.0) -> torch.Tensor:
         """
