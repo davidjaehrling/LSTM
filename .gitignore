@@ -21,6 +21,7 @@ saved_models/configs/
 saved_models/reconstruction_plots/
 saved_models/runs/
 saved_models/weights/
+saved_models/older_models/
 
 # No pngs
 **/*.png

@@ -40,26 +40,26 @@ def main():
     # PERTURBATION ANALYSIS
     # CHANNEL ANALYSIS
     ca = ChannelAnalyzer(model, ds, test_loader, config)
-    channel_deltas = ca.analyze_channel_importance()
+    # channel_deltas = ca.analyze_channel_importance()
     # ca.save_pickle(channel_deltas, f"channel_deltas.pkl")
     channel_deltas = ca.load_pickle(f"channel_deltas.pkl")
     important_channel = np.argsort(channel_deltas)[-6:][::-1].tolist()  # get first 4 important channels
-    df_ch_imp = ca.compute_temporal_importance()
+    # df_ch_imp = ca.compute_temporal_importance()
     # ca.save_pickle(df_ch_imp, f"tmp_channel_imp.pkl")
     df_ch_imp = ca.load_pickle(f"tmp_channel_imp.pkl")
 
     # FREQUENCY ANALYSIS
     fa = FrequencyAnalyzer(model, ds, test_loader, config)
-    band_deltas = fa.analyze_band_importance()
+    # band_deltas = fa.analyze_band_importance()
     # fa.save_pickle(band_deltas, f"band_deltas.pkl")
     band_deltas = fa.load_pickle(f"band_deltas.pkl")
-    df_freq_imp = fa.compute_temporal_importance()
+    # df_freq_imp = fa.compute_temporal_importance()
     # fa.save_pickle(df_freq_imp, f"tmp_band_importance.pkl")
     df_freq_imp = fa.load_pickle(f"tmp_band_importance.pkl")
 
     # MODEL LEVEL ANALYSIS
     mla = ModelLevelAnalysis(model, ds, test_loader, config)
-    # df_ig = mla.compute_integrated_gradients(imu_channel=0)
+    df_ig = mla.compute_integrated_gradients(target_ch=0)
     # mla.save_pickle(df_ig, f"integrated_gradients.pkl")
     df_ig = mla.load_pickle(f"integrated_gradients.pkl")
 

@@ -12,7 +12,7 @@ def plot_reconstruction(
     pred: Tensor,
     channel: int = 0,
     timesteps: Optional[Tuple[int, int]] = None,
-    title: str = "IMU Reconstruction",
+    title: str = "Reconstruction of Target-Output",
 ) -> plt.Figure:
     """
     Create a matplotlib Figure comparing predicted and true Output signals.
@@ -40,7 +40,7 @@ def plot_reconstruction(
     ax.plot(pred.cpu().numpy(), label="Predicted", linestyle="--")
     ax.set_title(title)
     ax.set_xlabel("Time")
-    ax.set_ylabel("Normalized IMU")
+    ax.set_ylabel("Normalized Target")
     ax.legend()
     ax.grid(True)
     fig.tight_layout()

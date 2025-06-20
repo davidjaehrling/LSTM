@@ -1,5 +1,5 @@
 import torch
-from src.utils import EEGIMUDataset
+from src.utils import EEGIMUDataset, EEGETDataset
 from src.lstm_train.models import LSTMRegressor
 from src.utils.utils import plot_reconstruction, reconstruct_signal
 from pathlib import Path
@@ -13,9 +13,13 @@ from datetime import datetime
 
 def main(config: Dict) -> float:
     # Define Dataset
-    csv_folder = f"../../data/{config['data_type']}/"
-    csv_path = sorted(Path(csv_folder).glob("*.csv"))[config["dataset"]]
-    ds = EEGIMUDataset(csv_path, window=config["window"], stride=config["stride"], bandpass = config["bandpass"])
+    csv_folder = f"../../data/{config['dataset']}/"
+    csv_path = sorted(Path(csv_folder).glob("*.csv"))[config["dataset_id"]]
+    print(f"CSV path: {csv_path}")
+    if config["dataset"] == "EEG_IMU":
+        ds = EEGIMUDataset(csv_path, window=config["window"], stride=config["stride"], bandpass = config["bandpass"])
+    elif config["dataset"] == "EEG_ET":
+        ds = EEGETDataset(csv_path, window=config["window"], stride=config["stride"], bandpass = config["bandpass"])
 
     # TRAIN/TEST/VAL SPLIT
     train_loader, val_loader, test_loader = ds.train_test_val_split(config["batch_size"])
@@ -75,7 +79,7 @@ def main(config: Dict) -> float:
         net=net, loader=test_loader, base_ds=ds
     )
 
-    # Plot an entire IMU channel (e.g. x-axis)
+    # Plot an entire Target channel (e.g. x-axis)
     fig = plot_reconstruction(
         true=full_true,
         pred=full_pred,
@@ -104,13 +108,13 @@ if __name__ == "__main__":
         "dropout": 0.2,
         "bidirectional": True,
         "window": 128,
-        "dataset": 0,
+        "dataset_id": 0,
+        "dataset": "EEG_IMU",
         "stride": 64,
         "model": "LSTM",
-        "epochs": 0,
+        "epochs": 50,
         "patience": 20,
-        "bandpass": (1, 12),
-        "data_type": "EEG_IMU",
+        "bandpass": (1, 30),
     }
 
     loss, compl = main(config)

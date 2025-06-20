@@ -27,24 +27,50 @@ class BaseDataset(Dataset[Tuple[Tensor, Tensor]]):
         self.window: int = window
         self.stride: int = stride
 
-    @abstractmethod
     def __len__(self) -> int:
         """
-        Total number of segments available.
+        Count of available windows: floor((T - window) / stride) + 1.
         """
-        ...  # implemented by subclasses
+        total = self.inp.shape[0]
+        return max(0, (total - self.window) // self.stride + 1)
 
-    @abstractmethod
     def __getitem__(
         self,
         idx: int,
-    ) -> Any:
+    ) -> Tuple[Tensor, Tensor]:
         """
-        Retrieve the idx-th window of data.
+        Return normalized EEG and IMU windows.
+
+        Args:
+            idx: Index of window segment.
 
         Returns:
-            A tuple or array of tensors (in_window, out_window).
+            Tuple of (eeg_window, imu_window), shape (window × channels).
         """
+        start = idx * self.stride
+        end = start + self.window
+        inp_win = self.inp[start:end]
+        out_win = self.out[start:end]
+
+        # Normalize EEG per window
+        inp_win = (inp_win - inp_win.mean(dim=0)) / inp_win.std(dim=0).clamp(min=1e-6)
+        return inp_win, out_win
+
+    def destandardize(
+        self,
+        x: Tensor,
+    ) -> Tensor:
+        """
+        Convert standardized Output back to original units.
+
+        Args:
+            x: Standardized Output tensor.
+
+        Returns:
+            De-standardized Output tensor.
+        """
+        return x * self.out_std + self.out_mean
+
 
     def train_test_val_split(
         self,
@@ -83,20 +109,3 @@ class BaseDataset(Dataset[Tuple[Tensor, Tensor]]):
         val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
         test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
         return train_loader, val_loader, test_loader
-
-    def destandardize(
-        self,
-        x: Tensor,
-    ) -> Tensor:
-        """
-        Reverse any standardization applied to OUT data.
-
-        Default is identity; override in subclass if needed.
-
-        Args:
-            x: Standardized OUT tensor.
-
-        Returns:
-            De-standardized OUT tensor.
-        """
-        return x
