@@ -92,6 +92,7 @@ def main(config: Dict) -> float:
     writer.add_figure("IMU Reconstruction Example", fig, global_step=0)
     metrics = {"val_loss": best_val_loss, "test_loss": test_loss}
     config["bandpass"] = str(config["bandpass"])    # make bandpass a string so it can be passed to tensorboard
+    config["num_parameters"] = net.num_parameters
     writer.add_hparams(config, metrics)
     writer.close()
 
@@ -100,21 +101,22 @@ def main(config: Dict) -> float:
 
 if __name__ == "__main__":
 
+    # example config
     config = {
         "batch_size": 32,
-        "hidden_dim": 224,
-        "num_layers": 3,
-        "lr": 0.005,
-        "dropout": 0.2,
+        "hidden_dim": 96,
+        "num_layers": 2,
+        "lr": 0.0005,            # learn rate
+        "dropout": 0.01,
         "bidirectional": True,
         "window": 128,
-        "dataset_id": 0,
-        "dataset": "EEG_IMU",
+        "dataset_id": 0,        # which dataset_id of the dataset
+        "dataset": "EEG_ET",    # which dataset
         "stride": 64,
         "model": "LSTM",
-        "epochs": 50,
-        "patience": 20,
-        "bandpass": (1, 30),
+        "epochs": 400,
+        "patience": 40,
+        "bandpass": (1, 20),
     }
 
     loss, compl = main(config)

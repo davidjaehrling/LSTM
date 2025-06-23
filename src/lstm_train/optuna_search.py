@@ -3,7 +3,7 @@ import optuna
 
 
 def objective(trial):
-    bandpass_options = [(1,44), (1,20), (1,12)]
+    bandpass_options = [(1,30), (1,20), (1,12)]
     config = {'batch_size': trial.suggest_categorical("batch_size", [32, 64, 128]),
               'hidden_dim': trial.suggest_int("hidden_dim", 64, 256, step=32),
               'num_layers': trial.suggest_int("num_layers", 2, 4),
@@ -28,7 +28,7 @@ def objective(trial):
 if __name__ == "__main__":
     study = optuna.create_study(
         directions=["minimize", "minimize"],
-        study_name=f"EEG-IMU_study",
+        study_name=f"EEG-ET_study",
         sampler=optuna.samplers.NSGAIISampler()
     )
     study.optimize(lambda trial: objective(trial), n_trials=50)

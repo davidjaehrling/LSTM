@@ -358,7 +358,7 @@ class Plotter(BaseAnalyser):
         df_ig: DataFrame,
         filename: str = "combined.png",
         spec_channel: list = (0),
-        figsize=(15, 20),
+        figsize=(15, 22),
     ):
         """
         Composite plot:
@@ -372,7 +372,7 @@ class Plotter(BaseAnalyser):
         df_freq_imp_seg = df_freq_imp.iloc[self.start : self.stop]
         df_ig_seg = df_ig.iloc[self.start : self.stop]
         inp_seg = self.dataset.inp.detach().numpy()[self.start : self.stop]
-        fig, axes = self._create_figure([2, 0.1, 2, 0.1, 2, 0.1, 2, 2], figsize)
+        fig, axes = self._create_figure([2.5, 0.1, 2, 0.1, 2.5, 0.1, 2, 2], figsize)
         # Heatmap Channel Importance
         self._plot_heatmap(
             axes[0], axes[1], df_ch_imp_seg, "Channel", "Temporal Importance Heatmap"

@@ -3,6 +3,8 @@ import json
 from collections import defaultdict
 import shutil
 
+NUM_DEL = 5
+
 # Function to parse JSON configuration files
 def parse_config(file_path):
     with open(file_path, 'r') as f:
@@ -46,8 +48,8 @@ for file in os.listdir(config_dir):
 # Step 2: Keep top 2 models per dataset, delete the rest
 for dataset, models in models_by_dataset.items():
     models_sorted = sorted(models, key=lambda x: x[1].get('test_loss', float('inf')))
-    models_to_keep = set(model_name for model_name, _ in models_sorted[:3])
-    models_to_delete = set(model_name for model_name, _ in models_sorted[3:])
+    models_to_keep = set(model_name for model_name, _ in models_sorted[:NUM_DEL])
+    models_to_delete = set(model_name for model_name, _ in models_sorted[NUM_DEL:])
 
     for model_name in models_to_delete:
         delete_model_files(model_name)

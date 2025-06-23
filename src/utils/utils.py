@@ -54,7 +54,6 @@ def reconstruct_signal(
 ) -> tuple[Tensor, Tensor]:
     """
     Stitch window-wise predictions from `loader` back into one continuous signal.
-    Works on CPU only (no device handling needed).
 
     Returns
     -------
